@@ -5485,6 +5485,8 @@ with pkgs;
 
   gdrive3 = callPackage ../applications/networking/gdrive3 { };
 
+  gossip = callPackage ../applications/networking/gossip { };
+
   gdu = callPackage ../tools/system/gdu { };
 
   gfxreconstruct = callPackage ../tools/graphics/gfxreconstruct { };
