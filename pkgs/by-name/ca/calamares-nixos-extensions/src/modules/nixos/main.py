@@ -789,6 +789,14 @@ def run():
     status = _("Installing NixOS")
     libcalamares.job.setprogress(0.3)
 
+    try:
+        subprocess.check_output(
+            ["pkexec", "chmod", "755", root_mount_point],
+            stderr=subprocess.STDOUT,
+        )
+    except subprocess.CalledProcessError as e:
+        libcalamares.utils.warning("Failed to set permissions on {}: {}".format(root_mount_point, e.output))
+
     # build nixos-install command
     nixosInstallCmd = [ "pkexec" ]
     nixosInstallCmd.extend(generateProxyStrings())
