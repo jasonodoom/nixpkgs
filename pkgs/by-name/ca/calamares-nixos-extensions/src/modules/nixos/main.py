@@ -360,6 +360,46 @@ def catenate(d, key, *values):
     d[key] = "".join(values)
 
 
+def fix_btrfs_subvolumes(hardware_config, partitions):
+    """
+    Fix btrfs subvolume configuration in hardware-configuration.nix.
+
+    nixos-generate-config generates incorrect subvol options for btrfs
+    by setting them to mount points instead of actual subvolume names.
+    This function corrects the subvol options to match what Calamares configured.
+    """
+    # Map of mount points to their correct btrfs subvolume names
+    # These match what is configured in mount.conf btrfsSubvolumes
+    subvol_map = {
+        "/": "@",
+        "/home": "@home",
+        "/nix": "@nix",
+    }
+
+    # Check if root is actually btrfs
+    root_is_btrfs = False
+    for part in partitions:
+        if part.get("mountPoint") == "/" and part.get("fs") == "btrfs":
+            root_is_btrfs = True
+            break
+
+    if not root_is_btrfs:
+        return hardware_config
+
+    libcalamares.utils.debug("Fixing btrfs subvolume configuration")
+
+    # Fix subvol options for each mount point
+    # nixos-generate-config may generate "subvol=/" instead of "subvol=@"
+    for mount_point, correct_subvol in subvol_map.items():
+        # Match any "subvol=<something>" and replace with correct subvolume
+        # This handles cases like "subvol=/" or "subvol=/home"
+        pattern = r'(fileSystems\."{}"[^;]*"subvol=)[^"]*"'.format(re.escape(mount_point))
+        replacement = r'\g<1>{}"'.format(correct_subvol)
+        hardware_config = re.sub(pattern, replacement, hardware_config, flags=re.DOTALL)
+
+    return hardware_config
+
+
 def run():
     """NixOS Configuration."""
 
@@ -734,9 +774,20 @@ def run():
             libcalamares.utils.error(e.output.decode("utf8"))
         return (_("nixos-generate-config failed"), _(e.output.decode("utf8")))
 
-    # Check for unfree stuff in hardware-configuration.nix
+    # Read and fix hardware-configuration.nix
     hf = open(root_mount_point + "/etc/nixos/hardware-configuration.nix", "r")
     htxt = hf.read()
+    hf.close()
+
+    hardware_modified = False
+
+    # Fix btrfs subvolume configuration if needed
+    htxt_fixed = fix_btrfs_subvolumes(htxt, gs.value("partitions"))
+    if htxt_fixed != htxt:
+        htxt = htxt_fixed
+        hardware_modified = True
+
+    # Check for unfree stuff in hardware-configuration.nix
     search = re.search(r"boot\.extraModulePackages = \[ (.*) \];", htxt)
 
     # Check if any extraModulePackages are defined, and remove if only free packages are allowed
@@ -765,14 +816,17 @@ def run():
                     )
                 )
                 expkgs.remove(pkg)
-        hardwareout = re.sub(
+        htxt = re.sub(
             r"boot\.extraModulePackages = \[ (.*) \];",
             "boot.extraModulePackages = [ {}];".format(
                 "".join(map(lambda x: x + " ", expkgs))
             ),
             htxt,
         )
-        # Write the hardware-configuration.nix file
+        hardware_modified = True
+
+    # Write the hardware-configuration.nix file if modified
+    if hardware_modified:
         libcalamares.utils.host_env_process_output(
             [
                 "cp",
@@ -780,7 +834,7 @@ def run():
                 root_mount_point + "/etc/nixos/hardware-configuration.nix",
             ],
             None,
-            hardwareout,
+            htxt,
         )
 
     # Write the configuration.nix file
