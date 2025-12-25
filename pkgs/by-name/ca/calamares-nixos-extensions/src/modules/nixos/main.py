@@ -379,10 +379,10 @@ def fix_btrfs_subvolumes(hardware_config, partitions):
     """
     # Map of mount points to their correct btrfs subvolume names
     # These match what is configured in mount.conf btrfsSubvolumes
+    # Root uses top-level (no subvolume) for GRUB compatibility
     subvol_map = {
-        "/": "@",
-        "/home": "@home",
-        "/nix": "@nix",
+        "/home": "home",
+        "/nix": "nix",
     }
 
     # Check if root is actually btrfs
