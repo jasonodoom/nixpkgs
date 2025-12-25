@@ -45,6 +45,15 @@ cfgbootbios = """  # Bootloader.
 
 """
 
+cfgbootbiosbtrfs = """  # Bootloader.
+  boot.loader.grub.enable = true;
+  boot.loader.grub.device = "@@bootdev@@";
+  boot.loader.grub.useOSProber = true;
+  # Use provided UUIDs instead of blkid probing (required for btrfs subvolumes)
+  boot.loader.grub.fsIdentifier = "provided";
+
+"""
+
 cfgbootnone = """  # Disable bootloader.
   boot.loader.grub.enable = false;
 
@@ -428,11 +437,22 @@ def run():
 
     # Pick config parts and prepare substitution
 
+    # Check if root filesystem is btrfs
+    root_is_btrfs = False
+    for part in gs.value("partitions"):
+        if part.get("mountPoint") == "/" and part.get("fs") == "btrfs":
+            root_is_btrfs = True
+            break
+
     # Check bootloader
     if fw_type == "efi":
         cfg += cfgbootefi
     elif bootdev != "nodev":
-        cfg += cfgbootbios
+        # Use btrfs-specific config to avoid blkid issues with subvolumes
+        if root_is_btrfs:
+            cfg += cfgbootbiosbtrfs
+        else:
+            cfg += cfgbootbios
         catenate(variables, "bootdev", bootdev)
     else:
         cfg += cfgbootnone
